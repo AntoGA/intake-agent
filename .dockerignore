@@ -1,0 +1,8 @@
+.env
+.env.*
+.git
+data
+backups
+__pycache__
+.venv
+public

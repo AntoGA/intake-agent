@@ -1,0 +1,27 @@
+name: cc-intake-agent
+x-base: &base
+  build: .
+  env_file: .env
+  volumes: ["./data:/app/data"]
+  restart: unless-stopped
+  read_only: true
+  tmpfs: ["/tmp:size=32m,mode=1777"]
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 128
+  mem_limit: 256m
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  api:
+    <<: *base
+    ports: ["127.0.0.1:8010:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  worker:
+    <<: *base
+    command: ["python", "adapters.py"]
