@@ -27,7 +27,9 @@ def connect():
         c.close()
 
 def ingest(source, external_id, contact, body):
-    if source not in ('form', 'email', 'telegram') or not external_id or len(body)>20000:
+    if (source not in ('form', 'email', 'telegram')
+            or any(not isinstance(v, str) or not v.strip() for v in (external_id, contact, body))
+            or len(external_id)>2000 or len(contact)>500 or len(body)>20000):
         raise ValueError('invalid input')
     with connect() as c:
         c.execute('BEGIN IMMEDIATE')
@@ -78,11 +80,13 @@ def process_one(generator=generate):
     try:
         result=generator(dict(row))
         with connect() as c:
-            c.execute("UPDATE leads SET status='review',draft=?,error=NULL,updated=? WHERE id=?",(json.dumps(result,ensure_ascii=False),time.time(),ident))
+            saved=c.execute("UPDATE leads SET status='review',draft=?,error=NULL,updated=? WHERE id=? AND status='processing' AND attempts=?",(json.dumps(result,ensure_ascii=False),time.time(),ident,attempt))
+            if not saved.rowcount: return True
             c.execute('INSERT INTO events VALUES(?,?,?)',(ident,time.time(),'draft_ready'))
     except Exception as e:
         with connect() as c:
             status='manual' if attempt>=3 else 'queued'
-            c.execute('UPDATE leads SET status=?,error=?,due=?,updated=? WHERE id=?',(status,type(e).__name__,time.time()+30*2**attempt,time.time(),ident))
+            saved=c.execute("UPDATE leads SET status=?,error=?,due=?,updated=? WHERE id=? AND status='processing' AND attempts=?",(status,type(e).__name__,time.time()+30*2**attempt,time.time(),ident,attempt))
+            if not saved.rowcount: return True
             c.execute('INSERT INTO events VALUES(?,?,?)',(ident,time.time(),'processing_failed'))
     return True

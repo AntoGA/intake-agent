@@ -1,24 +1,31 @@
 import os, secrets, time
 from fastapi import FastAPI, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from core import connect, ingest
 
 app=FastAPI(title='Единая очередь заявок', docs_url=None, redoc_url=None, openapi_url=None)
 
 def auth(authorization:str=Header(default='')):
     token=os.getenv('ADMIN_TOKEN','')
-    if len(token)<32 or not secrets.compare_digest(authorization,'Bearer '+token):
+    if len(token)<32 or not secrets.compare_digest(authorization.encode('utf-8'),('Bearer '+token).encode('utf-8')):
         raise HTTPException(401,'Нужен токен доступа')
 
 def ingest_auth(authorization:str=Header(default='')):
     token=os.getenv('INGEST_TOKEN','')
-    if len(token)<32 or not secrets.compare_digest(authorization,'Bearer '+token):
+    if len(token)<32 or not secrets.compare_digest(authorization.encode('utf-8'),('Bearer '+token).encode('utf-8')):
         raise HTTPException(401,'Нужен токен приёма заявок')
 
 class Lead(BaseModel):
     external_id:str=Field(min_length=1,max_length=200)
     contact:str=Field(min_length=1,max_length=500)
     text:str=Field(min_length=1,max_length=20000)
+
+    @field_validator('external_id', 'contact', 'text')
+    @classmethod
+    def reject_blank(cls, value):
+        if not value.strip():
+            raise ValueError('Blank fields are not allowed')
+        return value
 
 @app.post('/api/form',dependencies=[Depends(ingest_auth)])
 def form(item:Lead):
