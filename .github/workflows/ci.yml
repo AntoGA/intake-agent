@@ -11,9 +11,16 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements-dev.txt
-      - run: python -m unittest discover -v
+      - run: python -m unittest discover -v 2>&1 | tee test-results.log
       - run: python scripts/check_release.py
       - run: node --check public/demo.js
       - run: node scripts/test_demo.mjs
       - run: cp .env.example .env && docker compose config --quiet
       - run: docker compose build
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.python-version || '3.12' }}
+          path: test-results.log
+          if-no-files-found: warn
